@@ -200,31 +200,31 @@ So .then() only works for returning a single promise (which may resolve to any v
 What if you have a use case more specific than that?
 
 #### Core Chainables
-.then(fulfilledHandler[, rejectHandler]) handles a single value (which can be an object as well)
-.spread() is like then, but spreads an array of promises over spread's handler's arguments
-.catch() catches errors. Error handlers have a signature(error). Can be specialized to only handle specific errors
-.error() catches Promise.OperationErrors. Useful for recovering elegantly from failures.
-.bind() attaches statefulness to the promise chain. NEVER USE FOR RESOURCES
+- .then(fulfilledHandler[, rejectHandler]) handles a single value (which can be an object as well)
+- .spread() is like then, but spreads an array of promises over spread's handler's arguments
+- .catch() catches errors. Error handlers have a signature(error). Can be specialized to only handle specific errors
+- .error() catches Promise.OperationErrors. Useful for recovering elegantly from failures.
+- .bind() attaches statefulness to the promise chain. NEVER USE FOR RESOURCES
 
 #### Core Methods
-Promise.join() accepts a specific number of promises
-Promise.try() converts synchronous exceptions into rejections on the promise
-Promise.method() wraps a method and turns exceptions into rejects and returns into resolves.
-Promise.resolve() converts unknown objects or values into promises. jQuery thenables mainly.
-Promise.bind() is sugar for Promise.resolve(undefined).bind(thisArg). A good enough way to start a chain
+- Promise.join() accepts a specific number of promises
+- Promise.try() converts synchronous exceptions into rejections on the promise
+- Promise.method() wraps a method and turns exceptions into rejects and returns into resolves.
+- Promise.resolve() converts unknown objects or values into promises. jQuery thenables mainly.
+- Promise.bind() is sugar for Promise.resolve(undefined).bind(thisArg). A good enough way to start a chain
 
 #### Collections
 If you need a specific number of promises to resolve, such as when contacting two databases, you can use .all()
 
-.all() will fail if any of the promises fail
-.props() works on object properties
-.settle() waits for all promises to settle, that is, resolve or reject
-.any() waits for any promises to finish. useful for realtime racing.
-.some() is like any, but returns an array
-.map()    is like _.map but for async functions
-.reduce() is like _.reduce but for async
-.filter() is like _.filter but for async
-.each()   is like _.each but for async
+- .all() will fail if any of the promises fail
+- .props() works on object properties
+- .settle() waits for all promises to settle, that is, resolve or reject
+- .any() waits for any promises to finish. useful for realtime racing.
+- .some() is like any, but returns an array
+- .each()   is like _.each but for async
+- .map()    is like _.map but for async functions
+- .reduce() is like _.reduce but for async
+- .filter() is like _.filter but for async
 
 #### Inspection
 This is totally the most important thing for complicated edge cases, but I'm out of time
@@ -232,7 +232,7 @@ This is totally the most important thing for complicated edge cases, but I'm out
 #### Resources
 Promise.using() allows you to start a promise chain with a resource, and release that resource as soon as you are finished.
 
-.disposer()
+- .disposer()
 Ripped from bluebird api:
 ```js
 // This function doesn't return a promise but a Disposer
