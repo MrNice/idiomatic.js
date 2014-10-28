@@ -84,7 +84,7 @@ These are some fairly simple cases for callbacks. But it's easy to see how confu
 
 There are other problems with callbacks as well. Debugging is fairly difficult, because when an error is thrown, the callstack is polluted with all of the calling functions, in the order in which they were called, and it's difficult to figure out what state is actually available to the current function, and why it's not what you're expecting.
 
-Error handling is much much worse. Exceptions in JavaScript contain information about when they were created. With callbacks, that information is essentially garbage because of the polluted call stack. Futhermore, it's difficult to know where it is appropriate to catch an error and handle it. Which named or anonymous function should recover gracefully from this error? Is there any reason to continue with the execution? Will you simply `if (err) throw err;` everywhere?
+Error handling is much much worse. Exceptions in JavaScript contain information about when they were created. With callbacks, that information is essentially garbage because of the polluted call stack. Futhermore, it's difficult to know where it is appropriate to catch an error and handle it. Which named or anonymous function should recover gracefully from this error? Is there any reason to continue with the execution? Will you simply `if (err) throw err;` everywhere, collecting all of the errors at the top and deal with them in a massive switch statement? How will you handle errant code containing a reference to your callback,a nd then calling it randomly 20 minutes later, and it crashes your server?
 
 No.
 
@@ -95,4 +95,162 @@ Because you will stop writing callbacks *TODAY.*
 ## What is a promise?
 As we've already covered, a promise is just a specialized object. Essentially, every promise is a placeholder for a value. When you do a blocking operation, the operating code returns to you a promise that it will eventually give you a result, or value.
 
-Technically, a promise is always in one of three states. When there is no value, the promise is unresolved. If an error occurs, the promise becomes rejected, and fails. If the value is found without issue, 
+Technically, a promise is always in one of three states. When there is no value, the promise is unresolved. If an error occurs, the promise becomes rejected, and fails. If the value is found without issue, the promise assumes the value.
+
+Promises only ever transition FROM unresolved TO RESOLVED or REJECTED. You cannot restart a promise, but you can start a new promise chain should one fail. You can do this recursively, or with a loop, but you should instead rework your system so that your promises don't fail.
+
+## How do you use promises?
+Let's focus on bluebird, require'd as Promise.
+
+To use promises, you must start with functions which return promises or use the Promise constructor.
+
+In the simplest form, a Promise chain is a sequence of functions which return promises, finished with an error handler.
+
+The syntax is: PromiseCreator().then(PromiseCreator).then(PromiseCreator).catch(errorHandler);
+
+```js
+GetUserFromIDAsync("12345")
+  .then(function (user) {
+    // Update user
+    user.update_ad = Date.now();
+    // Return a new promise to continue the chain
+    console.log('The first promise resolved at: ' + Date.now());
+    return user.saveAsync();
+  }).catch(function (err) {
+    // Handle the error...
+  });
+
+console.log('This will log out first.', Date.now());
+```
+
+The important thing to notice is that you're handling all of the asynchronous operations inside the promise chain. Once you leave the promise chain, everything continues synchronously.
+
+One 'gotcha' is that, unlike Go, you cannot assign a variable to a Promise chain.
+
+```go
+c := make(chan int)  // Allocate a channel.
+// Start the sort in a goroutine; when it completes, signal on the channel.
+go func() {
+    list.Sort()
+    c <- 1  // Send a signal; value does not matter.
+}()
+doSomethingForAWhile()
+a <-c
+```
+
+```js
+// This doesn't work
+var user = GetUserFromIDAsync("12345");
+console.log(user); // Undefined
+```
+
+The reason is the same as it is for callbacks. The promise function doesn't block, and doesn't return, and therefore it doesn't have leave a defined value. There isn't a scheduler to handle running functions for you.
+
+### More abstractions
+So that covers the most basic use case, and the equivalent to the pyramid of doom.
+
+Bluebird has a large toolchest of helper methods to make using promises simple and easy.
+
+#### Generating Promises
+First of all, let's talk about Promise generating functions. There are three ways to get your code to pass promises:
+
+1. use `new Promise` to wrap around complex APIs
+```js
+return new Promise(function(accept, reject) {
+  // Wrapping an odd order of arguments
+  doSomething(function(data, err) {
+    // Please don't if (err) return reject(err);
+    if (err) {
+      reject(err);
+    } else {
+      resolve(data);
+    }
+  });
+});     
+```
+2. use Promise.promisifyAll() to promisify entire libraries and APIs
+```js
+// All DB and library stuff will be available by adding 'Async' to the end of the method calls
+module.exports.db = Promise.promisifyAll(require('mongoose'));
+```
+3. use Promise.promisify() to replace certain functions
+
+If all of your internal API's rely on promises to communicate, you'll never have any problems. And if you want your external API consumers to have a choice, you can use Promise.nodeify to turn a promise generating function into a callback accepting function. Although by then your spirit will be so broken you might just simply want to stop being a developer.
+
+```js
+// Ripped from bluebird docs
+function getDataFor(input, callback) {
+    return dataFromDataBase(input).nodeify(callback);
+}
+
+getDataFor("me").then(function(dataForMe) {
+    console.log(dataForMe);
+});
+
+getDataFor("me", function(err, dataForMe) {
+    if( err ) {
+        console.error( err );
+    }
+    console.log(dataForMe);
+});
+```
+
+### Making promises palatable
+So .then() only works for returning a single promise (which may resolve to any value, including an array)
+What if you have a use case more specific than that?
+
+#### Core Chainables
+.then(fulfilledHandler[, rejectHandler]) handles a single value (which can be an object as well)
+.spread() is like then, but spreads an array of promises over spread's handler's arguments
+.catch() catches errors. Error handlers have a signature(error). Can be specialized to only handle specific errors
+.error() catches Promise.OperationErrors. Useful for recovering elegantly from failures.
+.bind() attaches statefulness to the promise chain. NEVER USE FOR RESOURCES
+
+#### Core Methods
+Promise.join() accepts a specific number of promises
+Promise.try() converts synchronous exceptions into rejections on the promise
+Promise.method() wraps a method and turns exceptions into rejects and returns into resolves.
+Promise.resolve() converts unknown objects or values into promises. jQuery thenables mainly.
+Promise.bind() is sugar for Promise.resolve(undefined).bind(thisArg). A good enough way to start a chain
+
+#### Collections
+If you need a specific number of promises to resolve, such as when contacting two databases, you can use .all()
+
+.all() will fail if any of the promises fail
+.props() works on object properties
+.settle() waits for all promises to settle, that is, resolve or reject
+.any() waits for any promises to finish. useful for realtime racing.
+.some() is like any, but returns an array
+.map()    is like _.map but for async functions
+.reduce() is like _.reduce but for async
+.filter() is like _.filter but for async
+.each()   is like _.each but for async
+
+#### Inspection
+This is totally the most important thing for complicated edge cases, but I'm out of time
+
+#### Resources
+Promise.using() allows you to start a promise chain with a resource, and release that resource as soon as you are finished.
+
+.disposer()
+Ripped from bluebird api:
+```js
+// This function doesn't return a promise but a Disposer
+// so it's very hard to use it wrong (not passing it to `using`)
+function getConnection() {
+    return pool.getConnectionAsync().disposer(function(connection, promise) {
+        connection.close();
+    });
+}
+```
+
+#### Timers
+Sometimes you'll need to work with time.
+
+Mainly, you'll use
+```js
+.timeout(int ms[, message])
+```
+To turn the promise into a cancellable promise. If the timeout is reached, the entire promise fails.
+
+
